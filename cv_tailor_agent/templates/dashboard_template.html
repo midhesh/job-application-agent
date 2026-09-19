@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Application Dashboard</title>
+<style>
+  :root {
+    --bg: #f7f7f8; --card: #ffffff; --text: #1a1a1a; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #2563eb; --good: #16a34a; --good-dull: #65975a;
+    --warn: #d97706; --bad: #dc2626; --stage: #7c3aed;
+    --detail-bg: #fafafa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #16181d; --card: #1f2229; --text: #e8e8ea; --muted: #9aa0aa;
+             --border: #30333c; --accent: #5b9dff; --good: #4ade80; --good-dull: #8fbc8f;
+             --warn: #fbbf24; --bad: #f87171; --stage: #a78bfa;
+             --detail-bg: #191b20; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    background: var(--bg); color: var(--text); margin: 0;
+    display: flex;
+  }
+  .app-sidebar {
+    width: 180px; flex-shrink: 0; background: var(--card); border-right: 1px solid var(--border);
+    padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; height: 100vh;
+    position: sticky; top: 0;
+  }
+  .app-sidebar .brand { font-size: 13px; font-weight: 700; padding: 0 10px 14px 10px; color: var(--text); }
+  .app-sidebar a {
+    display: block; padding: 9px 10px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    color: var(--muted); text-decoration: none;
+  }
+  .app-sidebar a:hover { background: var(--bg); color: var(--text); }
+  .app-sidebar a.active { background: var(--accent); color: #fff; }
+  .app-main { flex: 1; min-width: 0; padding: 32px; }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  tbody tr.main-row:last-of-type td { border-bottom: 1px solid var(--border); }
+  a.open-link { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; }
+  a.open-link:hover { text-decoration: underline; }
+  .score { font-weight: 700; font-size: 15px; }
+  .score-excellent { color: var(--good); font-weight: 700; }
+  .score-good { color: var(--good-dull); font-weight: 700; }
+  .score-warn { color: var(--warn); font-weight: 700; }
+  .score-bad { color: var(--bad); font-weight: 700; }
+  .status-not-applied { color: var(--bad); font-weight: 600; }
+  .status-applied { color: var(--good); font-weight: 600; }
+  .status-shortlisted {
+    color: var(--text); font-weight: 600; border: 1.5px solid var(--good);
+    border-radius: 6px; padding: 2px 9px; display: inline-block;
+  }
+  .status-other { color: var(--muted); font-weight: 600; }
+  .status-closed { color: var(--muted); font-weight: 600; font-style: italic; }
+  .status-on-hold {
+    color: var(--warn); font-weight: 600; border: 1.5px solid var(--warn);
+    border-radius: 6px; padding: 2px 9px; display: inline-block;
+  }
+  .fit-apply { color: var(--good); font-weight: 600; }
+  .fit-flag { color: var(--warn); font-weight: 600; }
+  .fit-human {
+    color: var(--text); font-weight: 600; border: 1.5px solid var(--warn);
+    border-radius: 6px; padding: 2px 9px; display: inline-block;
+  }
+  .fit-none { color: var(--muted); font-weight: 600; }
+  .cvcell-created { color: var(--good); font-weight: 600; }
+  .cvcell-created-warn { color: var(--warn); font-weight: 600; }
+  .cvcell-base { color: var(--muted); font-weight: 600; }
+  .outcome-none { color: var(--muted); }
+  .outcome-inprogress {
+    color: var(--stage); font-weight: 600; border: 1.5px solid var(--stage);
+    border-radius: 6px; padding: 2px 9px; display: inline-block;
+  }
+  .outcome-rejected { color: var(--bad); font-weight: 600; }
+  .outcome-hired {
+    color: var(--text); font-weight: 700; background: var(--good);
+    border-radius: 6px; padding: 2px 9px; display: inline-block;
+  }
+  .location { color: var(--muted); font-size: 11px; word-break: break-all; max-width: 260px; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  .footer-note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  button.details-toggle {
+    background: none; border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  button.details-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  tr.detail-row { display: none; background: var(--detail-bg); }
+  tr.detail-row.open { display: table-row; }
+  tr.detail-row td { padding: 16px 14px 20px 14px; }
+  .breakdown-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 24px;
+  }
+  .metric-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .metric-value { font-size: 14px; font-weight: 600; margin-top: 2px; }
+  .gaps-block { margin-top: 14px; font-size: 12px; color: var(--warn); }
+  .gaps-block ul { margin: 4px 0 0 18px; padding: 0; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    margin-bottom: 12px; font-size: 12px;
+  }
+  .toolbar label { color: var(--muted); margin-right: 4px; }
+  .toolbar select, .toolbar button {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 9px; font-size: 12px; cursor: pointer;
+  }
+  .toolbar select:focus, .toolbar button:hover { border-color: var(--accent); }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--accent); }
+  .no-match-row td { text-align: center; padding: 24px; color: var(--muted); }
+  .pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 14px; font-size: 12px; color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+  .pagination .page-controls { display: flex; align-items: center; gap: 8px; }
+  .pagination button {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  }
+  .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .pagination button:disabled { opacity: 0.4; cursor: default; }
+</style>
+</head>
+<body>
+  <nav class="app-sidebar">
+    <div class="brand">Job Application Agent</div>
+    <a href="dashboard.html" class="active">Dashboard</a>
+    <a href="standard_answers.html">Field Responses</a>
+  </nav>
+  <div class="app-main">
+  <h1>Job Application Dashboard</h1>
+  <div class="subtitle">
+    Generated {{ generated_at }} &middot; {{ records|length }} application(s) tracked &middot;
+    common view - reserved for future Job Application Agent data alongside this
+  </div>
+
+  <div class="card">
+    {% if records %}
+    <div class="toolbar">
+      <span><label for="filterCvStatus">CV Status</label>
+        <select id="filterCvStatus" onchange="applyFilters()">
+          <option value="all">All</option>
+          <option value="frozen">Frozen (clean pass)</option>
+          <option value="frozen_below_threshold">Frozen (below threshold)</option>
+          <option value="historical_reference">Historical reference</option>
+        </select>
+      </span>
+      <span><label for="filterAppStatus">Application Status</label>
+        <select id="filterAppStatus" onchange="applyFilters()">
+          <option value="all">All</option>
+          <option value="not_applied">Not Applied</option>
+          <option value="shortlisted">Applied - Shortlisted</option>
+          <option value="applied">Applied</option>
+        </select>
+      </span>
+      <span><label for="filterScore">Composite Score</label>
+        <select id="filterScore" onchange="applyFilters()">
+          <option value="all">All</option>
+          <option value="95">&ge; 95</option>
+          <option value="90">&ge; 90</option>
+          <option value="85">&ge; 85</option>
+          <option value="80">&ge; 80</option>
+          <option value="lt80">&lt; 80</option>
+        </select>
+      </span>
+      <span><label for="searchField">Search by</label>
+        <select id="searchField" onchange="applyFilters()">
+          <option value="all">All Fields</option>
+          <option value="company">Company</option>
+          <option value="jobtitle">Job Title</option>
+          <option value="cvstatus">CV Creation Status</option>
+          <option value="fit">Apply Fit</option>
+          <option value="appstatus">Job Application Status</option>
+          <option value="outcome">Outcome</option>
+        </select>
+      </span>
+      <button onclick="resetFilters()">Reset filters</button>
+    </div>
+    <div class="toolbar" style="justify-content: flex-end;">
+      <span><input type="text" id="searchText" placeholder="Search..." oninput="applyFilters()"
+              style="background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; font-size: 12px; width: 220px;"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Company</th><th>Job Title</th>
+          <th class="sortable" id="dateHeader" onclick="sortByDate()">Date Created <span id="dateSortArrow">↕</span></th>
+          <th>Composite Score</th>
+          <th>CV Creation Status</th><th>Apply Fit</th><th>Job Application Status</th>
+          <th>Submitted</th><th>Outcome</th><th></th><th></th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        {% for r in records %}
+        <tr class="main-row" data-idx="{{ loop.index0 }}" data-date="{{ r.date_created }}"
+            data-score="{{ r.composite_score if r.composite_score is not none else -1 }}"
+            data-cvstatus="{{ r.cv_status_value }}" data-appstatus="{{ r.application_status }}">
+          <td>{{ r.company }}</td>
+          <td>{{ r.job_title }}</td>
+          <td>{{ r.date_created }}</td>
+          <td class="{{ r.score_class }}">
+            {{ r.composite_score if r.composite_score is not none else '—' }}
+          </td>
+          <td class="{{ r.cv_cell_class }}">{{ r.cv_cell_label }}</td>
+          <td><span class="{{ r.fit_class }}">{{ r.fit_label }}</span></td>
+          <td><span class="{{ r.app_status_class }}">{{ r.app_status_label }}</span></td>
+          <td class="location">{{ r.submitted_at or '—' }}</td>
+          <td><span class="{{ r.outcome_class }}">{{ r.outcome_label }}</span></td>
+          <td><a class="open-link" href="{{ r.pdf_uri }}" target="_blank">Open PDF ↗</a></td>
+          <td><button class="details-toggle" onclick="toggleDetails({{ loop.index0 }})">View Details</button></td>
+        </tr>
+        <tr class="detail-row" id="detail-{{ loop.index0 }}">
+          <td colspan="11">
+            <div class="breakdown-grid">
+              <div><div class="metric-label">Profile Fit to This Job (Coverage)</div><div class="metric-value">{{ (r.ats_coverage_pct ~ '%') if r.ats_coverage_pct is not none else '—' }}</div></div>
+              <div><div class="metric-label">Quantification Density</div><div class="metric-value">{{ (r.quantification_density_pct ~ '%') if r.quantification_density_pct is not none else '—' }}</div></div>
+              <div><div class="metric-label">Strong-Verb-Lead Bullets</div><div class="metric-value">{{ (r.strong_verb_lead_pct ~ '%') if r.strong_verb_lead_pct is not none else '—' }}</div></div>
+              <div><div class="metric-label">One-Line Compliant</div><div class="metric-value">{{ (r.one_line_compliant_pct ~ '%') if r.one_line_compliant_pct is not none else '—' }}</div></div>
+              <div><div class="metric-label">Contact Fields Present</div><div class="metric-value">{{ r.contact_fields_present if r.contact_fields_present is not none else '—' }}/4</div></div>
+              <div><div class="metric-label">Defensibility Flags</div><div class="metric-value">{{ r.defensibility_flag_count if r.defensibility_flag_count is not none else '—' }}</div></div>
+              <div><div class="metric-label">Style Violations</div><div class="metric-value">{{ r.style_violation_count if r.style_violation_count is not none else '—' }}</div></div>
+              <div><div class="metric-label">Bullets Changed from Base</div><div class="metric-value">{{ (r.pct_bullets_changed ~ '%') if r.pct_bullets_changed is not none else '—' }}</div></div>
+              <div>
+                <div class="metric-label">JD Source</div>
+                <div class="metric-value" style="font-weight:400;">
+                  {% if r.job_post_url %}<a class="open-link" href="{{ r.job_post_url }}" target="_blank">{{ r.jd_source or 'Open source post' }} ↗</a>
+                  {% else %}{{ r.jd_source or '—' }}{% endif %}
+                </div>
+              </div>
+              <div>
+                <div class="metric-label">Full File Path</div>
+                <div class="metric-value" style="font-weight:400; word-break:break-all; font-size:11px; color:var(--muted);">{{ r.location }}</div>
+              </div>
+              <div><div class="metric-label">Application Pattern</div><div class="metric-value">{{ r.application_pattern or '—' }}</div></div>
+              <div><div class="metric-label">Cover Letter / Content Status</div><div class="metric-value">{{ r.cover_letter_status or '—' }}</div></div>
+              <div><div class="metric-label">Submitted At</div><div class="metric-value">{{ r.submitted_at or '—' }}</div></div>
+              <div>
+                <div class="metric-label">Submission Evidence</div>
+                <div class="metric-value" style="font-weight:400;">
+                  {% if r.submission_evidence_url %}<a class="open-link" href="{{ r.submission_evidence_url }}" target="_blank">{{ r.submission_evidence_note or 'Open evidence' }} ↗</a>
+                  {% else %}—{% endif %}
+                </div>
+              </div>
+              <div>
+                <div class="metric-label">Submitted Content</div>
+                <div class="metric-value" style="font-weight:400;">
+                  {% if r.content_page_uri %}<a class="open-link" href="{{ r.content_page_uri }}" target="_blank">View full application content ↗</a>
+                  {% else %}—{% endif %}
+                </div>
+              </div>
+            </div>
+            {% if r.market_gaps %}
+            <div class="gaps-block">
+              Market-pattern gaps (for your judgment, not blocking):
+              <ul>{% for g in r.market_gaps %}<li>{{ g }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
+            {% if r.fit_reasoning %}
+            <div class="gaps-block" style="color: var(--muted);">
+              Apply-fit reasoning: {{ r.fit_reasoning }}
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="no-match-row" id="noMatchRow" style="display:none;">
+          <td colspan="11">No rows match the current filters.</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="pagination">
+      <span id="pageInfo"></span>
+      <div class="page-controls">
+        <button id="prevPageBtn" onclick="goToPage(currentPage - 1)">&larr; Prev</button>
+        <span id="pageIndicator"></span>
+        <button id="nextPageBtn" onclick="goToPage(currentPage + 1)">Next &rarr;</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">No CVs generated yet. Run the pipeline and `freeze` to populate this dashboard.</div>
+    {% endif %}
+  </div>
+
+  <div class="footer-note">Regenerated automatically by `cv-tailor freeze`. Static HTML, no server required - just reopen this file.</div>
+  </div>
+
+  <script>
+    const PAGE_SIZE = 25;
+    let currentPage = 1;
+    let filteredRows = [];
+
+    function toggleDetails(i) {
+      document.getElementById('detail-' + i).classList.toggle('open');
+    }
+
+    let dateSortAsc = null; // null = unsorted, true = last sorted ascending, false = descending
+    function sortByDate() {
+      dateSortAsc = dateSortAsc === true ? false : true; // toggle, defaulting to ascending first
+      const tbody = document.getElementById('tableBody');
+      const mainRows = Array.from(document.querySelectorAll('tr.main-row'));
+      mainRows.sort((a, b) => {
+        const cmp = a.dataset.date.localeCompare(b.dataset.date);
+        return dateSortAsc ? cmp : -cmp;
+      });
+      mainRows.forEach(row => {
+        const detail = document.getElementById('detail-' + row.dataset.idx);
+        tbody.appendChild(row);
+        if (detail) tbody.appendChild(detail);
+      });
+      const noMatch = document.getElementById('noMatchRow');
+      if (noMatch) tbody.appendChild(noMatch);
+      document.getElementById('dateSortArrow').textContent = dateSortAsc ? '↑' : '↓';
+      applyFilters(); // DOM order changed - rebuild the filtered/paginated list and reset to page 1
+    }
+
+    const SEARCH_FIELD_CELL_INDEX = {
+      company: 0, jobtitle: 1, cvstatus: 4, fit: 5, appstatus: 6, outcome: 8
+    };
+
+    function applyFilters() {
+      const cvStatus = document.getElementById('filterCvStatus').value;
+      const appStatus = document.getElementById('filterAppStatus').value;
+      const scoreFilter = document.getElementById('filterScore').value;
+      const searchField = document.getElementById('searchField').value;
+      const searchText = document.getElementById('searchText').value.trim().toLowerCase();
+      filteredRows = [];
+      document.querySelectorAll('tr.main-row').forEach(row => {
+        let visible = true;
+        if (cvStatus !== 'all' && row.dataset.cvstatus !== cvStatus) visible = false;
+        if (appStatus !== 'all' && row.dataset.appstatus !== appStatus) visible = false;
+        if (scoreFilter !== 'all') {
+          const score = parseFloat(row.dataset.score);
+          if (scoreFilter === 'lt80') {
+            if (!(score < 80)) visible = false;
+          } else {
+            if (!(score >= parseFloat(scoreFilter))) visible = false;
+          }
+        }
+        if (visible && searchText) {
+          const haystack = searchField === 'all'
+            ? row.textContent.toLowerCase()
+            : (row.cells[SEARCH_FIELD_CELL_INDEX[searchField]] || {}).textContent?.toLowerCase() || '';
+          if (!haystack.includes(searchText)) visible = false;
+        }
+        if (visible) filteredRows.push(row);
+      });
+      goToPage(1);
+    }
+
+    function goToPage(page) {
+      const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+      currentPage = Math.min(Math.max(1, page), totalPages);
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      const onThisPage = new Set(filteredRows.slice(start, end));
+
+      document.querySelectorAll('tr.main-row').forEach(row => {
+        const show = onThisPage.has(row);
+        row.style.display = show ? '' : 'none';
+        const detail = document.getElementById('detail-' + row.dataset.idx);
+        if (detail) {
+          if (!show) detail.classList.remove('open');
+          detail.style.display = show ? '' : 'none';
+        }
+      });
+
+      document.getElementById('noMatchRow').style.display = filteredRows.length === 0 ? 'table-row' : 'none';
+
+      const rangeStart = filteredRows.length === 0 ? 0 : start + 1;
+      const rangeEnd = Math.min(end, filteredRows.length);
+      document.getElementById('pageInfo').textContent =
+        `Showing ${rangeStart}-${rangeEnd} of ${filteredRows.length}`;
+      document.getElementById('pageIndicator').textContent = `Page ${currentPage} of ${totalPages}`;
+      document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+      document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+    }
+
+    function resetFilters() {
+      document.getElementById('filterCvStatus').value = 'all';
+      document.getElementById('filterAppStatus').value = 'all';
+      document.getElementById('filterScore').value = 'all';
+      document.getElementById('searchField').value = 'all';
+      document.getElementById('searchText').value = '';
+      applyFilters();
+    }
+
+    applyFilters(); // initial paginated render
+  </script>
+</body>
+</html>

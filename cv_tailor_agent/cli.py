@@ -192,6 +192,148 @@ def prep_market_benchmark_prompt(
     rprint(f"[green]Prompt written to {out}[/green] — use an AI with web search/browsing enabled for a real result.")
 
 
+@app.command("validate-patch-batch")
+def validate_patch_batch_cmd(
+    manifest: Path = typer.Option(
+        ...,
+        help="JSON file: either a list of patch paths, or a list of {\"cv_master\": ..., \"patch\": ...} objects "
+        "(cv_master defaults to --cv-master when omitted per-item)",
+    ),
+    cv_master: Path | None = typer.Option(None, help="Default cv_master.yaml for items that don't specify their own"),
+) -> None:
+    """Batched, no-AI check: validate several patches in ONE call instead of one validate-patch call per job.
+    Exists so that, when several tailored CVs are being built in the same turn, the deterministic
+    guardrail gate doesn't require a separate round-trip per job. Never halts on the first failure -
+    reports every item's result so all-but-the-broken-ones can proceed."""
+    items = json.loads(manifest.read_text(encoding="utf-8"))
+    any_failed = False
+    for item in items:
+        if isinstance(item, str):
+            item = {"patch": item}
+        patch_path = Path(item["patch"])
+        item_cv_master = Path(item["cv_master"]) if item.get("cv_master") else cv_master
+        if item_cv_master is None:
+            rprint(f"[red]SKIPPED[/red] {patch_path} — no cv_master given (neither per-item nor --cv-master default)")
+            any_failed = True
+            continue
+        doc = load_cv_document(item_cv_master)
+        patch_obj = TailorPatch.model_validate_json(patch_path.read_text(encoding="utf-8"))
+        errors = validate_patch(doc, patch_obj)
+        if errors:
+            any_failed = True
+            rprint(f"[red]REJECTED[/red] {patch_path}:")
+            for e in errors:
+                rprint(f"  - {e}")
+        else:
+            rprint(f"[green]OK[/green] {patch_path}")
+    if any_failed:
+        sys.exit(1)
+
+
+@app.command("freeze-batch")
+def freeze_batch_cmd(
+    manifest: Path = typer.Option(
+        ...,
+        help="JSON file: a list of objects, each with the same fields as `freeze`'s options "
+        "(cv_master, patch, critic, company, job_title, jd_source, job_post_url, jd, out, "
+        "min_score, accept_below_threshold). Per-item cv_master/min_score/accept_below_threshold "
+        "fall back to this command's own --cv-master/--min-score/--accept-below-threshold when omitted.",
+    ),
+    cv_master: Path | None = typer.Option(None, help="Default cv_master.yaml for items that don't specify their own"),
+    min_score: float = typer.Option(95.0, help="Default minimum score for items that don't specify their own"),
+    accept_below_threshold: bool = typer.Option(
+        False, "--accept-below-threshold", help="Default override for items that don't specify their own"
+    ),
+) -> None:
+    """The multi-job finalization gate: runs the same checks as `freeze` (guardrails, critic pass,
+    score threshold, render, registry upsert) for EVERY item in the manifest within a single process,
+    instead of one `freeze` invocation per job. This is what makes building several tailored CVs in
+    the same turn actually parallel from the caller's side - the sequential validate->critic->score->
+    freeze chain still applies WITHIN each job (that dependency is real and inherent), but the N jobs'
+    chains no longer require N separate round-trips for this final stage. One failing item does not
+    stop the others; the dashboard is regenerated exactly once at the end, after all upserts."""
+    items = json.loads(manifest.read_text(encoding="utf-8"))
+    any_failed = False
+    any_succeeded = False
+
+    for item in items:
+        label = f"{item.get('company', '?')} / {item.get('job_title', '?')}"
+        try:
+            item_cv_master = Path(item["cv_master"]) if item.get("cv_master") else cv_master
+            if item_cv_master is None:
+                raise ValueError("no cv_master given (neither per-item nor --cv-master default)")
+
+            doc = load_cv_document(item_cv_master)
+            patch_obj = TailorPatch.model_validate_json(Path(item["patch"]).read_text(encoding="utf-8"))
+
+            blockers = validate_patch(doc, patch_obj)
+            if blockers:
+                raise ValueError("guardrails failed: " + "; ".join(blockers))
+
+            critic_obj = CriticReport.model_validate_json(Path(item["critic"]).read_text(encoding="utf-8"))
+            if not critic_obj.passed:
+                raise ValueError(f"critic did not pass: {critic_obj.feedback_for_tailor}")
+
+            tailored = apply_patch(doc, patch_obj)
+            card = compute_scorecard(tailored, critic_obj)
+            item_min_score = item.get("min_score", min_score)
+            item_accept_below = item.get("accept_below_threshold", accept_below_threshold)
+            below_threshold = card.composite_score < item_min_score
+            if below_threshold and not item_accept_below:
+                raise ValueError(
+                    f"composite score {card.composite_score} is below the {item_min_score} threshold "
+                    f"(set \"accept_below_threshold\": true for this item to override)"
+                )
+
+            out = Path(item["out"]) if item.get("out") else None
+            if out is None:
+                output_dir = Path(os.environ.get("CV_OUTPUT_DIR", "private/output"))
+                filename = f"{_sanitize(tailored.header.name)}_{_sanitize(item['company'])}_{_sanitize(item['job_title'])}_CV.pdf"
+                out = output_dir / filename
+
+            render_document(tailored, out)
+
+            delta = compute_delta(doc, tailored)
+            jd_path = item.get("jd")
+            jd_text = Path(jd_path).read_text(encoding="utf-8") if jd_path else None
+
+            record = CVRecord(
+                company=item["company"],
+                job_title=item["job_title"],
+                date_created=date.today().isoformat(),
+                location=str(out.resolve()),
+                jd_source=item.get("jd_source"),
+                job_post_url=item.get("job_post_url"),
+                jd_text=jd_text,
+                composite_score=card.composite_score,
+                ats_coverage_pct=card.ats_keyword_coverage_pct,
+                status="frozen_below_threshold" if below_threshold else "frozen",
+                quantification_density_pct=card.structural.quantification_density_pct,
+                strong_verb_lead_pct=card.structural.strong_verb_lead_pct,
+                one_line_compliant_pct=card.structural.one_line_compliant_pct,
+                contact_fields_present=card.structural.contact_fields_present,
+                defensibility_flag_count=card.defensibility_flag_count,
+                style_violation_count=card.style_violation_count,
+                pct_bullets_changed=delta.pct_bullets_changed,
+            )
+            upsert_record(record)
+            any_succeeded = True
+
+            status_word = "[yellow]FROZEN BELOW THRESHOLD[/yellow]" if below_threshold else "[green]FROZEN[/green]"
+            rprint(f"{status_word} {label} — score {card.composite_score}/100. {out}")
+
+        except Exception as e:  # noqa: BLE001 - one bad manifest item must not abort the batch
+            any_failed = True
+            rprint(f"[red]NOT FROZEN[/red] {label} — {e}")
+
+    if any_succeeded:
+        generate_dashboard(load_registry())
+        rprint("[green]Dashboard updated:[/green] private/dashboard.html")
+
+    if any_failed:
+        sys.exit(1)
+
+
 @app.command("freeze")
 def freeze_cmd(
     cv_master: Path = typer.Option(...),

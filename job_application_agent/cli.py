@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -59,7 +60,7 @@ def check_draft(
     company: str,
     job_title: str,
     draft: Path,
-    linkedin_url: str = typer.Option(..., help="Candidate's LinkedIn profile URL, used for source validation"),
+    linkedin_url: str = os.environ.get("CANDIDATE_LINKEDIN_URL", ""),
     registry: Path = typer.Option(Path("../cv-tailor-agent/private/registry.json")),
 ):
     """Run content guardrails + source-JD validation on a draft in one call."""

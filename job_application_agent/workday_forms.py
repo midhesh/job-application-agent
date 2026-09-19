@@ -16,8 +16,8 @@ Key discoveries this module encodes so they never have to be re-derived:
    position/substring via select_dropdown_by_controls(), not exact ASCII
    string comparison.
 3. Phone Number wants ONLY the local number (no country code, that's a
-   separate field) - passing the full "+91 <number>" string fails validation,
-   the bare local number passes.
+   separate field) - a full "+<country code> <number>" string fails
+   validation, the bare local-format number passes.
 4. Field of Study / School / Skills are all the same "multiselect typeahead"
    widget. Its search box does NOT reliably clear via locator.fill("") -
    leftover text concatenates across calls, which silently corrupts every
@@ -31,15 +31,16 @@ Key discoveries this module encodes so they never have to be re-derived:
 6. A School not in Workday's database: type the literal phrase
    "School Not Listed" and press Enter - Workday accepts it directly as the
    selected value, no separate free-text name field appears.
-7. Degree dropdown: prefer the closest formal-degree option over a generic
-   "Postgraduate (Diploma)" entry when the candidate's actual diploma is
-   functionally equivalent (clears more ATS filters) - a standing choice,
-   not one to re-ask about.
-8. Field of Study for a niche engineering major: match on the closest
-   available option in Workday's fixed list rather than the exact wording
-   from the transcript - a standing choice, not one to re-ask about.
-9. Some past employers share a city that Workday's resume parser leaves
-   blank on import - fill in Location manually every time for those roles.
+7. Degree dropdown: prefer "Master of Business Administration" over
+   "Postgraduate (Diploma)" for a PGDM that's functionally MBA-equivalent
+   (clears more ATS filters) - a standing choice, not one to re-ask about.
+8. Grad-school Field of Study: only "Electronics" and "Electrical and
+   Electronics Engineering" exist as close matches for a B.Tech ECE degree -
+   use "Electrical and Electronics Engineering" (closer match) - a standing
+   choice, not one to re-ask about.
+9. Two prior employers happen to share a city that the resume parser leaves
+   blank on import for both; fill in Location manually every time for those
+   roles.
 10. Internship roles should have "(MBA Summer Internship)" or "(Internship)"
     appended to the Job Title so they aren't misread as full-time roles.
 11. Role Description fields should be a short 2-4 sentence prose writeup
@@ -101,14 +102,12 @@ from __future__ import annotations
 
 from playwright.sync_api import Page, sync_playwright
 
-# Illustrative shape only - real values are loaded from a candidate profile
-# (env vars / local config) at call time, never hardcoded here.
 WORKDAY_STANDING_CHOICES = {
     "grad_school_degree": "Master of Business Administration",  # not "Postgraduate (Diploma)"
     "undergrad_field_of_study": "Electrical and Electronics Engineering",  # not "Electronics"
-    "past_employer_1_location": "<from candidate profile>",
-    "past_employer_2_location": "<from candidate profile>",
-    "phone_number_local_only": "<from candidate profile>",  # no "+91 " prefix - that's a separate field
+    "prior_employer_1_location": "example city both share",
+    "prior_employer_2_location": "example city both share",
+    "phone_number_local_only": "read from CANDIDATE_PHONE_LOCAL env var, no country-code prefix",
 }
 
 

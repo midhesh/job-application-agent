@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from itertools import groupby
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -70,6 +69,8 @@ def application_status_display(status: str) -> tuple[str, str]:
         return "Applied", "status-applied"
     if status == "closed":
         return "Closed (Not Accepting)", "status-closed"
+    if status == "on_hold":
+        return "On Hold", "status-on-hold"
     return status, "status-other"
 
 
@@ -114,30 +115,12 @@ def outcome_display(stage: str | None, result: str | None) -> tuple[str, str]:
     return stage_label, "outcome-inprogress"
 
 
-def _row_sort_priority(r: CVRecord) -> int:
-    """Default row order: rejected outcomes sink to the very bottom, shortlisted
-    historical rows sit just above them, everything else (not yet applied, or
-    applied with no terminal outcome yet - the actual active worklist) stays on
-    top where it's actually actionable."""
-    if r.outcome_result == "rejected" or r.application_status == "closed":
-        return 2
-    if r.application_status == "shortlisted":
-        return 1
-    return 0
-
-
 def generate_dashboard(records: list[CVRecord], out_path: Path = DEFAULT_DASHBOARD_PATH) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)))
     template = env.get_template("dashboard_template.html")
 
-    # Group by priority (actionable/active on top, rejected at the bottom), and
-    # within each group show most-recent first.
-    by_priority = sorted(records, key=_row_sort_priority)
-    ordered = [
-        row
-        for _, group in groupby(by_priority, key=_row_sort_priority)
-        for row in sorted(group, key=lambda r: r.date_created, reverse=True)
-    ]
+    # Strict chronological order, most recent first - no status-based grouping.
+    ordered = sorted(records, key=lambda r: r.date_created, reverse=True)
 
     rows = []
     for r in ordered:

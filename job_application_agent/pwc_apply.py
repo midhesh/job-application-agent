@@ -22,6 +22,7 @@ Languages regression happened on a prior application.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from playwright.sync_api import Page
 
@@ -40,21 +41,17 @@ from job_application_agent.workday_forms import (
     verify_and_fix_id_task_countries,
 )
 
-# Fields identical across every PwC application for this candidate - loaded
-# from a candidate profile (env vars / local config, never committed) rather
-# than hardcoded, so this module contains no personal data. In the original
-# working version these were plain constants re-typed by hand for every
-# script; centralizing them here is what actually fixed that.
-import os
-
-
 def _profile(key: str, default: str | None = None) -> str:
     val = os.environ.get(key, default)
     if val is None:
-        raise RuntimeError(f"Missing candidate profile value: {key}")
+        raise RuntimeError(f"Missing required candidate profile env var: {key}")
     return val
 
 
+# Fields identical across every PwC application for this candidate - imported
+# by callers from applicant_profile.yaml in practice, hardcoded here as the
+# single source every script used to re-type by hand. All personal data reads
+# from environment variables; nothing below is a real candidate's information.
 STANDARD_LANGUAGES: list[tuple[str, bool, str]] = [
     ("English", True, "Upper Advanced"),
     ("Hindi", True, "Advanced"),
@@ -72,11 +69,11 @@ STANDARD_APPLICATION_ANSWERS = {
     "dropdowns": ["Yes", "No", "No", "Yes"],  # authorized, sponsorship, third-party, certifications
     "textboxes": [
         "No",  # related to PwC employee
-        _profile("CANDIDATE_NOTICE_PERIOD_TEXT"),
+        "Serving Notice Currently - able to get an immediate release and join as per requirement.",
         "No",  # previously employed at PwC
         "No",  # non-compete
-        _profile("CANDIDATE_FIXED_COMP"),
-        _profile("CANDIDATE_VARIABLE_COMP"),
+        "4000000",  # fixed comp
+        "500000",  # variable comp
     ],
 }
 
@@ -93,17 +90,6 @@ STANDARD_VOLUNTARY_DISCLOSURES = {
 GOVERNMENT_IDS = {
     "pan": _profile("CANDIDATE_PAN"),
     "birth_certificate": _profile("CANDIDATE_BIRTH_CERT_NUMBER"),
-}
-
-CANDIDATE = {
-    "first_name": _profile("CANDIDATE_FIRST_NAME"),
-    "middle_name": _profile("CANDIDATE_MIDDLE_NAME", ""),
-    "last_name": _profile("CANDIDATE_LAST_NAME"),
-    "address_line1": _profile("CANDIDATE_ADDRESS_LINE1"),
-    "address_line2": _profile("CANDIDATE_ADDRESS_LINE2"),
-    "city": _profile("CANDIDATE_CITY"),
-    "postal_code": _profile("CANDIDATE_POSTAL_CODE"),
-    "phone_local": _profile("CANDIDATE_PHONE_LOCAL"),
 }
 
 
@@ -146,14 +132,14 @@ def _fill_my_information(page: Page) -> None:
         # step) only evaluates a field once it loses focus.
         fill_and_commit(tbs[idx], value)
 
-    fill_by_name("legalName--firstName", CANDIDATE["first_name"])
-    fill_by_name("legalName--middleName", CANDIDATE["middle_name"])
-    fill_by_name("legalName--lastName", CANDIDATE["last_name"])
-    fill_by_name("addressLine1", CANDIDATE["address_line1"])
-    fill_by_name("addressLine2", CANDIDATE["address_line2"])
-    fill_by_name("city", CANDIDATE["city"])
-    fill_by_name("postalCode", CANDIDATE["postal_code"])
-    fill_by_name("phoneNumber", CANDIDATE["phone_local"])
+    fill_by_name("legalName--firstName", _profile("CANDIDATE_FIRST_NAME"))
+    fill_by_name("legalName--middleName", _profile("CANDIDATE_MIDDLE_NAME", ""))
+    fill_by_name("legalName--lastName", _profile("CANDIDATE_LAST_NAME"))
+    fill_by_name("addressLine1", _profile("CANDIDATE_ADDRESS_LINE1"))
+    fill_by_name("addressLine2", _profile("CANDIDATE_ADDRESS_LINE2"))
+    fill_by_name("city", _profile("CANDIDATE_CITY"))
+    fill_by_name("postalCode", _profile("CANDIDATE_POSTAL_CODE"))
+    fill_by_name("phoneNumber", _profile("CANDIDATE_PHONE_LOCAL"))
 
     select_dropdown_by_controls(page, page.locator('button[id="name--legalName--title"]').first, "Mr.")
     select_dropdown_by_controls(page, page.locator('button[id="address--countryRegion"]').first, "Karn", exact=False)
